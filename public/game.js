@@ -11,15 +11,42 @@ let items = [];
 let mouseX = 0;
 let mouseY = 0;
 
+// Sprite setup
+const playerSprite = new Image();
+playerSprite.src = '/assets/sprites/player.png';
+
+const SPRITE_WIDTH = Math.floor(500 / 3); // 166
+const SPRITE_HEIGHT = Math.floor(500 / 3); // 166
+
+
+playerSprite.onload = () => {
+  console.log("✅ Sprite carregada!", playerSprite.width, "x", playerSprite.height);
+  resizeCanvas();
+};
+
 // Redimensionamento automático
 function resizeCanvas() {
   canvas.width = canvas.clientWidth;
   canvas.height = canvas.clientHeight;
-  draw(players, projectiles, items); // redesenha ao redimensionar
+  draw(players, projectiles, items);
 }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas(); // chamada inicial
+resizeCanvas();
 
+
+// const directionMap = {
+//     'down': 0,   // linha 3ª
+//     'left': 3,   // linha 4ª
+//     'right': 1,  // linha 2ª
+//     'up': 3      // linha 1ª
+//   };
+
+  const directionMap = {
+    'right': 0,
+    'down': 1,
+    'up': 2,
+    'left': 0  // usa right espelhado
+  };
 // Chat
 const form = document.getElementById('chat-form');
 const input = document.getElementById('message-input');
@@ -52,14 +79,14 @@ socket.on('userLeft', ({ name }) => {
   messages.appendChild(msg);
 });
 
-// Movimento do mouse para atualizar mira
+// Movimento do mouse
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
   mouseX = e.clientX - rect.left;
   mouseY = e.clientY - rect.top;
 });
 
-// Tiro com clique
+// Tiro
 canvas.addEventListener('click', () => {
   const player = players[myId];
   if (!player) return;
@@ -71,18 +98,66 @@ canvas.addEventListener('click', () => {
   socket.emit('shoot', { angle });
 });
 
-// Estado vindo do servidor (agora inclui items)
+// Estado vindo do servidor
 socket.on('state', ({ players: serverPlayers, projectiles: serverProjectiles, items: serverItems }) => {
-  players = serverPlayers;
-  projectiles = serverProjectiles;
-  items = serverItems;
-  draw(players, projectiles, items);
-});
+    // preserva os dados locais do jogador
+    const local = players[myId] || {};
+    players = serverPlayers;
+  
+    if (players[myId]) {
+      players[myId].direction = local.direction || 'down';
+      players[myId].frame = local.frame || 0;
+      players[myId].frameTick = local.frameTick || 0;
+    }
+  
+    projectiles = serverProjectiles;
+    items = serverItems;
+  
+    draw(players, projectiles, items);
+  });
+  
 
+// Desenha o personagem com sprite
+function drawSprite(p) {
+    if (!playerSprite.complete) return;
+  
+    const row = directionMap[p.direction || 'down'];
+    const col = (p.frame || 0) % 3;
+  
+    const sx = col * SPRITE_WIDTH;
+    const sy = row * SPRITE_HEIGHT;
+    const dx = p.x;
+    const dy = p.y;
+    const dw = 40;
+    const dh = 40;
+  
+    if (p.direction === 'left') {
+      ctx.save();
+      ctx.scale(-1, 1); // espelha horizontalmente
+      ctx.drawImage(
+        playerSprite,
+        sx, sy,
+        SPRITE_WIDTH, SPRITE_HEIGHT,
+        -dx - dw, dy, // dx negativo por conta do flip
+        dw, dh
+      );
+      ctx.restore();
+    } else {
+      ctx.drawImage(
+        playerSprite,
+        sx, sy,
+        SPRITE_WIDTH, SPRITE_HEIGHT,
+        dx, dy,
+        dw, dh
+      );
+    }
+  }
+  
+// Desenha tudo
 function draw(players, projectiles, items) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Itens no mapa (ex: armas)
+  // Itens
   for (const item of items) {
     ctx.beginPath();
     ctx.arc(item.x, item.y, 10, 0, 2 * Math.PI);
@@ -95,8 +170,7 @@ function draw(players, projectiles, items) {
   // Jogadores
   for (const id in players) {
     const p = players[id];
-    ctx.fillStyle = id === myId ? 'lime' : 'red';
-    ctx.fillRect(p.x, p.y, 20, 20);
+    drawSprite(p);
     ctx.fillStyle = 'white';
     ctx.fillText(`${p.name} (${p.hp})`, p.x, p.y - 5);
   }
@@ -110,17 +184,16 @@ function draw(players, projectiles, items) {
   }
 }
 
-// Registro da conexão
+// Conexão
 socket.on('connect', () => {
   myId = socket.id;
 });
 
-// Registro da desconexão
 socket.on('disconnect', () => {
   delete players[socket.id];
 });
 
-// Movimento fluido com múltiplas teclas
+// Controle de movimento
 const pressedKeys = new Set();
 
 document.addEventListener('keydown', (e) => {
@@ -137,9 +210,29 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
-// Envia continuamente as teclas pressionadas
+// Animação e envio de movimento
 setInterval(() => {
-  if (pressedKeys.size > 0) {
-    socket.emit('move', Array.from(pressedKeys));
-  }
-}, 1000 / 60); // 60 FPS
+    const directions = Array.from(pressedKeys);
+    const p = players[myId];
+  
+    if (p) {
+      if (directions.includes('w')) p.direction = 'up';
+      if (directions.includes('s')) p.direction = 'down';
+      if (directions.includes('a')) p.direction = 'left';
+      if (directions.includes('d')) p.direction = 'right';
+  
+      // Apenas avança animação se estiver se movendo
+      if (pressedKeys.size > 0) {
+        p.frameTick = (p.frameTick || 0) + 1;
+        if (p.frameTick % 10 === 0) {
+          p.frame = ((p.frame || 0) + 1) % 3;
+        }
+      } else {
+        // Zera o frame ao parar
+        p.frame = 1; // geralmente frame neutro está no meio (1)
+      }
+  
+      socket.emit('move', directions);
+    }
+  }, 1000 / 60);
+  
