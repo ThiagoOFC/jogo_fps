@@ -173,7 +173,14 @@ function draw(players, projectiles, items) {
     drawSprite(p);
     ctx.fillStyle = 'white';
     ctx.fillText(`${p.name} (${p.hp})`, p.x, p.y - 5);
+  
+    // 🔴 Visualização da hitbox (modo debug)
+    ctx.beginPath();
+    ctx.arc(p.x + 30, p.y + 30, 14, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+    ctx.stroke();
   }
+  
 
   // Projéteis
   for (const proj of projectiles) {

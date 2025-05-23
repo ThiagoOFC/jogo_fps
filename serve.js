@@ -133,15 +133,21 @@ setInterval(() => {
     for (const id in players) {
       const p = players[id];
       if (id === proj.shooterId) continue;
-      const dx = proj.x - p.x;
-      const dy = proj.y - p.y;
-      if (Math.sqrt(dx * dx + dy * dy) < 15) {
+    
+      // Novo centro da hitbox (tronco do personagem)
+      const hitboxX = p.x + 30; // centro horizontal
+      const hitboxY = p.y + 30; // mais abaixo
+    
+      const dx = proj.x - hitboxX;
+      const dy = proj.y - hitboxY;
+      if (Math.sqrt(dx * dx + dy * dy) < 14) {
         p.hp -= 10;
         if (p.hp <= 0) delete players[id];
         projectiles.splice(i, 1);
         break;
       }
     }
+    
 
     if (now - proj.createdAt > 3000) {
       projectiles.splice(i, 1);
